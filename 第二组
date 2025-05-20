@@ -1,0 +1,118 @@
+在Docker环境下部署mBlog微博系统。
+1.检查Docker服务状态
+检查Docker服务是否正常运行，确保Docker正常运行
+运行代码：systemctl status docker
+
+作用：确保Docker引擎已启动并正常运行。
+原因：Docker是容器化的核心工具，必须保证其服务处于活跃状态才能执行后续操作。
+
+2.检查Docker版本
+检查Docker版本，当前Docker版本为26.1.4。
+运行代码：docker version
+
+
+3.下载mBlog镜像
+在docker拉取镜像 kingwrcy/mblog:latest
+运行代码：避免
+作用：从Docker Hub下载预构建的mBlog应用镜像。
+原因：避免手动构建镜像的复杂性，直接使用官方或团队预编译的镜像，确保环境一致性。
+扩展说明：若需自定义镜像（如修改代码），需通过Dockerfile构建（后续步骤）。
+4.部署mBlog
+创建mBlog容器
+Vim Dockerfile
+(1)编写Dockerfile方式进行部署
+
+# 使用多阶段构建减小镜像体积
+FROM maven:3.8.6-openjdk-11 AS build
+WORKDIR /app
+COPY . .
+RUN mvn clean package -DskipTests
+
+FROM openjdk:11-jre-slim
+WORKDIR /app
+COPY --from=build /app/target/mblog-*.jar /app/mblog.jar
+EXPOSE 8080
+CMD ["java", "-jar", "mblog.jar"]
+
+(2)构建镜像
+docker build -t mblog:latest .
+
+
+(3)创建docker-compose.yml
+version: '3'services:
+  mblog:
+    image: mblog:latest
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/mblog
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=123456
+    depends_on:
+      - mysql
+      - redis
+
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: 123456
+      MYSQL_DATABASE: mblog
+    volumes:
+      - mysql_data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+
+  redis:
+    image: redis:6-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+volumes:
+  mysql_data:
+  redis_data:
+
+
+查看mBlog容器容器状态
+
+(4)检查mBlog容器状态，确保mBlog容器正常启动
+
+
+# 使用更明确的端口映射（例如保持内外端口一致）docker run -d \
+  -v /data/mblog/data:/opt/mblog \
+  -p 38321:38321 \  # 直接使用 38321 端口
+  --restart=unless-stopped \  # 更灵活的重启策略
+  --name mblog \
+  -e DB_TYPE=sqlite \  # 简化环境变量设置
+  kingwrcy/mblog:v1.0.0  # 指定具体版本
+
+
+运行代码：docker ps
+
+作用：根据docker-compose.yml启动所有服务（mBlog、MySQL、Redis）。
+参数解释：-d：后台运行（detached mode），不阻塞当前终端。
+核心流程：创建Docker网络，使各服务可通过服务名（如mysql、redis）通信。
+按依赖顺序启动服务：MySQL → Redis → mBlog。
+5.检容器日志
+使用以下命令，查看容器运行日志。
+docker logs mblog
+
+
+
+作用：列出所有运行中的容器，检查状态是否为Up。
+预期输出：应看到mblog、mysql、redis三个容器均正常运行。
+6.访问mBlog微博系统
+Ip  a
+访问mBlog首页
+访问本机IP地址
+
+
+
+
+
+
+URL：http://localhost:8080
+功能验证（对应文件3.png）：
+1登录/注册：验证用户数据是否写入MySQL。
+2创建/删除博客：检查操作是否持久化到数据库。
+3缓存测试：通过频繁访问验证Redis是否缓存热点数据。
